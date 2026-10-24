@@ -1,0 +1,35 @@
+Junior Python Backend Developer
+
+Experience: 0-2 years | Engineering | Fictional test vacancy
+
+ROLE OVERVIEW
+
+Build and maintain Python web APIs and database-backed services. Fresh graduates may demonstrate relevant experience through internships, coursework or personal projects.
+
+REQUIRED SKILLS
+
+Python fundamentals, object-oriented programming and basic data structures.
+
+Practical use of Flask or Django to build REST APIs.
+
+SQL, relational database design and integration with PostgreSQL, MySQL or SQLite.
+
+Git version control, debugging and unit testing with pytest or unittest.
+
+RESPONSIBILITIES
+
+Implement API routes, input validation and useful error responses. Connect APIs to a relational database and maintain readable Python code.
+
+Write unit tests, troubleshoot defects and participate in code reviews. Explain your contribution and design decisions for at least one relevant project.
+
+PREFERRED QUALIFICATIONS
+
+Practical use of Docker and basic deployment to AWS.
+
+Basic HTML, CSS and JavaScript for integrating a simple web interface.
+
+Use of Pandas for a small data-processing or reporting task.
+
+EDUCATION
+
+Computer science or a related qualification, or equivalent practical learning. Professional employment is not required for fresh graduates.

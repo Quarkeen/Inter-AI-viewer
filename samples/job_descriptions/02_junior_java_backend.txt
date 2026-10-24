@@ -1,0 +1,33 @@
+Junior Java Backend Developer
+
+Experience: 0-2 years | Engineering | Fictional test vacancy
+
+ROLE OVERVIEW
+
+Develop Java backend services and database-backed REST APIs. Relevant internships, coursework and personal projects are accepted for entry-level applicants.
+
+REQUIRED SKILLS
+
+Java fundamentals, object-oriented programming, collections and exception handling.
+
+Practical use of Spring Boot for REST APIs, request validation and error handling.
+
+SQL and a relational database such as PostgreSQL or MySQL; basic JPA or Hibernate integration.
+
+Git version control, Maven builds and unit tests using JUnit.
+
+RESPONSIBILITIES
+
+Implement and debug API endpoints, integrate relational storage, and write tests for application behaviour.
+
+Participate in code reviews and explain your personal contribution, database choices and testing approach for a relevant project.
+
+PREFERRED QUALIFICATIONS
+
+Containerize an application with Docker.
+
+Basic practical deployment to AWS and familiarity with application configuration.
+
+EDUCATION
+
+Computer science or a related qualification, or equivalent practical learning. Professional employment is not required for fresh graduates.
