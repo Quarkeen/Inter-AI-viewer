@@ -6,7 +6,7 @@ from contextlib import closing
 from datetime import datetime, timedelta
 
 from database import DATABASE_PATH
-from scheduling import _timestamp, _verify_approval, utc_now
+from scheduling import _timestamp, _verify_approval, access_window, utc_now
 
 
 COMPLETION_MESSAGE = "Interview is done, your will be informed through mail for any further communication, Thank you"
@@ -23,7 +23,8 @@ def _invitation(connection, token, require_open=True):
     if row is None:
         raise ValueError("This invitation is unavailable.")
     _verify_approval(connection, row["run_id"], row["application_id"], row["evaluation_id"])
-    if require_open and not datetime.fromisoformat(row["starts_at"]) <= utc_now() < datetime.fromisoformat(row["ends_at"]):
+    opens, closes = access_window(row["starts_at"], row["ends_at"])
+    if require_open and not opens <= utc_now() < closes:
         raise ValueError("The interview is outside its assigned time window.")
     return row
 
@@ -41,20 +42,26 @@ def start_session(token, database_path=DATABASE_PATH):
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
         expire_sessions(connection)
-        invitation = _invitation(connection, token)
+        invitation = _invitation(connection, token, require_open=False)
         previous = connection.execute(
             "SELECT session_id FROM interview_sessions WHERE invitation_sha256 = ?", (invitation["token_sha256"],)
         ).fetchone()
         if previous:
             return previous[0]
+        now = utc_now()
+        opens, closes = access_window(invitation["starts_at"], invitation["ends_at"])
+        if not opens <= now < closes:
+            raise ValueError("The interview is outside its allowed start window.")
         if connection.execute("SELECT 1 FROM interview_sessions WHERE status = 'active'").fetchone():
             raise ValueError("Another interview is in progress. Please try again shortly.")
         session_id = secrets.token_hex(16)
+        duration = datetime.fromisoformat(invitation["ends_at"]) - datetime.fromisoformat(invitation["starts_at"])
+        deadline = _timestamp(now + duration)
         connection.execute(
             """INSERT INTO interview_sessions
-               (session_id,interview_id,evaluation_id,invitation_sha256,status,slot_end)
-               VALUES (?, ?, ?, ?, 'active', ?)""",
-            (session_id, invitation["interview_id"], invitation["evaluation_id"], invitation["token_sha256"], invitation["ends_at"]),
+               (session_id,interview_id,evaluation_id,invitation_sha256,status,slot_end,started_at)
+               VALUES (?, ?, ?, ?, 'active', ?, ?)""",
+            (session_id, invitation["interview_id"], invitation["evaluation_id"], invitation["token_sha256"], deadline, now.strftime("%Y-%m-%d %H:%M:%S")),
         )
         return session_id
 
@@ -101,7 +108,8 @@ def claim_operation(token, database_path=DATABASE_PATH):
     with closing(sqlite3.connect(database_path)) as connection, connection:
         connection.row_factory = sqlite3.Row
         connection.execute("BEGIN IMMEDIATE")
-        invitation = _invitation(connection, token)
+        expire_sessions(connection)
+        invitation = _invitation(connection, token, require_open=False)
         row = connection.execute(
             "SELECT * FROM interview_sessions WHERE invitation_sha256 = ?", (invitation["token_sha256"],)
         ).fetchone()

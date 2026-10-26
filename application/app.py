@@ -9,7 +9,6 @@ init_database()
 page = st.navigation({
     "HR": [
         st.Page("pages/0_Create_Job.py", title="Create a job", icon="➕", default=True),
-        st.Page("pages/1_Saved_JDs.py", title="Saved JDs", icon="📋", url_path="saved-jds"),
         st.Page("pages/3_Applications.py", title="Applications", icon="👥", url_path="applications"),
         st.Page("pages/4_Shortlist.py", title="Shortlist review", icon="✅", url_path="shortlist"),
         st.Page("pages/5_Schedule.py", title="Interview scheduling", icon="📅", url_path="schedule"),

@@ -6,14 +6,14 @@ from database import get_jobs, save_application
 from resume import extract_resume
 
 
-def load_resume():
+def load_resume(): # extracts resume using pypdf
     for key in ("resume_error", "resume_source_text", "application_receipt"):
         st.session_state.pop(key, None)
     uploaded = st.session_state["candidate_resume"]
     if uploaded is None:
         return
     try:
-        text = extract_resume(uploaded.getvalue())
+        text = extract_resume(uploaded.getvalue()) # imported from resume.py
         st.session_state["resume_source_text"] = text
     except ValueError as error:
         st.session_state["resume_error"] = str(error)

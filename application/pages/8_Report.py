@@ -1,29 +1,51 @@
 import re
 import sqlite3
 from functools import partial
+from datetime import datetime
 
 import streamlit as st
 
-from groq_client import generate
 from interview_reports import (
-    DIMENSIONS, OUTCOMES, REPORT_VERSION, TOPIC_DIMENSIONS, answer_recording, finished_interviews,
-    generate_report, get_report, latest_decision, overview_text, report_source, save_report_decision, source_hash, visible_findings,
+    OUTCOMES, REPORT_VERSION, answer_recording, finished_interviews,
+    get_report, latest_decision, overview_text, report_source, save_report_decision, source_hash, visible_findings,
 )
 from report_pdf import duration_text, export_report_pdf, radar_svg, score_text
+from report_jobs import report_job_status, start_report_job
+from scheduling import utc_now
 
 
 st.set_page_config(layout="wide")
+st.html("""<style>
+.stMainBlockContainer { max-width: 1100px; margin-inline: auto; }
+div.st-key-report_question { border-radius: 12px; padding: 20px; }
+</style>""")
 st.page_link("pages/7_Shortlisted.py", label="Back to shortlisted candidates", icon=":material/arrow_back:")
-
-
-def evidence_passages(items):
-    for item in items:
-        st.caption(f"Answer evidence · topic {item['main_number']}")
-        st.text(item["text"])
 
 
 def open_decision(report_id):
     st.session_state[f"report_section_{report_id}"] = "HR decision"
+
+
+def generation_running(report, job):
+    lease_active = report and report["generation_owner"] and report["lease_until"] and datetime.fromisoformat(report["lease_until"]) > utc_now()
+    return job["state"] in ("queued", "running") or bool(lease_active)
+
+
+@st.fragment(run_every="3s")
+def report_progress(session_id):
+    saved = get_report(session_id=session_id)
+    job = report_job_status(session_id)
+    if saved and saved["status"] == "ready":
+        st.rerun()
+    if not generation_running(saved, job):
+        st.rerun()
+    st.info("Your report is being prepared. You can visit another page and return here; generation will continue.")
+    topics = {topic["main_number"] for key, values in (saved["parts"] if saved else {}).items()
+              if key.startswith("topics_") for topic in values}
+    if topics:
+        st.caption(f"{len(topics)} topics assessed and saved. Preparing the remaining assessment.")
+    else:
+        st.caption("Waiting for the assessment to begin." if job["state"] == "queued" else "Assessing the recorded answers. Requests are paced to respect model rate limits.")
 
 
 try:
@@ -46,19 +68,19 @@ try:
     st.title(source["full_name"])
     st.caption(f"{source['role']} · Application #{source['application_id']} · Interview #{source['interview_id']}")
     if not current:
-        st.info("Generate the interview report to review scores, supporting evidence, and record an HR decision.")
-        if st.button("Generate interview report", type="primary", icon=":material/auto_awesome:"):
-            with st.status("Assessing the interview…", expanded=True) as progress:
-                def model(system, documents, schema):
-                    return generate(
-                        st.secrets.get("GROQ_API_KEY", ""), st.secrets.get("GROQ_MODEL", "openai/gpt-oss-120b"),
-                        system, documents, schema, max_completion_tokens=1536,
-                        schema_name="interview_report", purpose="interview_scoring",
-                        usage_session_id=session_id, pace_requests=True,
-                    )
-                report_id = generate_report(session_id, model, st.secrets.get("GROQ_MODEL", "openai/gpt-oss-120b"), progress=lambda label: progress.update(label=label))
-                progress.update(label="Report ready", state="complete", expanded=False)
-            st.session_state[f"report_section_{report_id}"] = "HR decision"
+        job = report_job_status(session_id)
+        if generation_running(report, job):
+            report_progress(session_id)
+            st.stop()
+        if job["state"] == "failed":
+            st.error(job["message"])
+        resumable = report and report["status"] == "generating"
+        if resumable:
+            st.info("Generation was interrupted. Your completed assessments are saved; resume to finish the report.")
+        else:
+            st.info("Generate the interview report to review scores, supporting evidence, and record an HR decision.")
+        if st.button("Resume report generation" if resumable else "Generate interview report", type="primary", icon=":material/auto_awesome:"):
+            start_report_job(session_id, st.secrets.get("GROQ_API_KEY", ""), st.secrets.get("GROQ_MODEL", "openai/gpt-oss-120b"))
             st.rerun()
         st.stop()
 
@@ -74,63 +96,54 @@ try:
                            file_name=f"{filename}_application_{saved_source['application_id']}_report.pdf", mime="application/pdf", icon=":material/download:")
     if saved_source["status"] != "completed":
         st.warning("This interview ended before completion. Untested topics are not scored.")
-    if decision:
-        st.caption(f"HR decision: {decision['outcome']} · {decision['decided_at']} UTC")
-    else:
+    if not decision:
         st.info("Report ready. Please record an HR decision.")
     section = st.segmented_control("Report section", ["Overview", "Answers & evidence", "HR decision"],
                                    default=None if f"report_section_{report['report_id']}" in st.session_state else "Overview",
                                    key=f"report_section_{report['report_id']}", selection_mode="single") or "Overview"
     if section == "Overview":
-        chart, summary = st.columns([1, 1.25])
+        _, chart, _ = st.columns([1, 2, 1])
         with chart:
-            st.html(radar_svg(result["dimension_scores"]))
-        with summary:
-            st.write(overview_text(result))
-            st.caption("Coverage is limited to the questions asked. An untested skill is not a demonstrated weakness.")
-            st.caption(f"Resume score: {score_text(saved_source['resume_score'])} · kept separate from the interview score")
-            for label, key in [("Strengths", "strengths"), ("Follow-up areas", "gaps")]:
+            # Serve SVG as an image so the pentagon is rendered reliably.
+            svg = radar_svg(result["dimension_scores"]).replace('fill="currentColor"', 'fill="#173649"')
+            opening, shapes = svg.split(">", 1)
+            st.image(opening + '><rect width="500" height="350" rx="12" fill="#f5f8fa"/>' + shapes, width="stretch")
+        st.write(overview_text(result))
+        for column, (label, key) in zip(st.columns(2), [("Strengths", "strengths"), ("Follow-up areas", "gaps")]):
+            with column.container(border=True):
                 st.markdown(f"**{label}**")
                 findings = visible_findings(result, key)
                 if not findings:
-                    st.caption("No additional finding recorded within the assessed topics.")
-                for item in findings:
+                    st.caption("No additional finding within the assessed topics.")
+                for item in findings[:2]:
                     st.write("• " + item["text"])
-            st.button("Review HR decision", type="primary" if not decision else "secondary", on_click=open_decision, args=(report["report_id"],))
+        st.button("Review HR decision", type="primary" if not decision else "secondary", on_click=open_decision, args=(report["report_id"],))
     elif section == "Answers & evidence":
-        by_topic = {item["main_number"]: item for item in result["topics"]}
-        number = st.selectbox("Main topic", list(range(1, 7)), format_func=lambda value: f"Topic {value}" + (" · not assessed" if value not in by_topic else ""))
-        if number not in by_topic:
-            st.info("No usable answer was recorded for this topic.")
+        turns = {turn["turn_id"]: turn for turn in saved_source["turns"]}
+        if not turns:
+            st.info("No questions are available for this interview.")
         else:
-            topic = by_topic[number]
-            columns = st.columns(4)
-            for column, name in zip(columns, TOPIC_DIMENSIONS):
-                column.metric(DIMENSIONS[name], score_text(topic["dimensions"][name]["score"]))
-            answers, reasoning = st.tabs(["Questions & answers", "Score reasoning"])
-            with answers:
-                turns = [turn for turn in saved_source["turns"] if turn["main_number"] == number]
-                selected = st.selectbox("Answer", [turn["turn_id"] for turn in turns], format_func=lambda value: next(("Main question" if turn["kind"] == "main" else "Follow-up") + f" · Q{turn['sequence']}" for turn in turns if turn["turn_id"] == value))
-                turn = next(turn for turn in turns if turn["turn_id"] == selected)
+            selected = st.selectbox(
+                "Question", list(turns), key=f"report_question_{report['report_id']}",
+                format_func=lambda value: f"Q{turns[value]['sequence']} · {turns[value]['question']}",
+            )
+            turn = turns[selected]
+            with st.container(border=True, key="report_question"):
+                st.caption("QUESTION")
                 st.write(turn["question"])
-                with st.container(border=True, height=240):
-                    st.text(turn["answer_text"] or "No answer recorded.")
-                with st.expander("Listen to original answer"):
-                    recording = answer_recording(session_id, turn["turn_id"])
-                    if recording:
-                        st.audio(recording, format="audio/wav")
-                    else:
-                        st.caption("No recording is available for this answer.")
-            with reasoning:
-                dimension = st.selectbox("Dimension", TOPIC_DIMENSIONS, format_func=lambda value: DIMENSIONS[value])
-                rating = topic["dimensions"][dimension]
-                st.write(rating["explanation"])
-                evidence_passages(rating["evidence"])
-        with st.expander("Role alignment and next-round questions"):
-            st.write(result["role_alignment"]["explanation"])
-            evidence_passages(result["role_alignment"]["evidence"])
-            for question in result["next_round_questions"]:
-                st.write("• " + question)
+                st.caption("TRANSCRIBED ANSWER")
+                answer = turn["answer_text"] or "No answer recorded."
+                if len(answer) > 1000:
+                    with st.container(height=180, border=False):
+                        st.text(answer)
+                else:
+                    st.text(answer)
+                st.caption("ORIGINAL AUDIO")
+                recording = answer_recording(session_id, turn["turn_id"])
+                if recording:
+                    st.audio(recording, format="audio/wav")
+                else:
+                    st.caption("No recording is available for this answer.")
     else:
         st.subheader("HR decision")
         st.caption("Review the evidence, then choose the application's next step.")

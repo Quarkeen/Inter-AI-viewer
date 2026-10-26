@@ -27,7 +27,7 @@ def _validate_threshold(threshold):
 def meets_threshold(assessment, threshold):
     _validate_threshold(threshold)
     # A component's weighted points meet its weighted minimum iff its raw
-    # 0–100 score meets the threshold. Weights remain private to the backend.
+    # 0–100 score meets the threshold.
     return all(
         assessment["components"][name]["score"] >= threshold
         for name in WEIGHTS if assessment["components"][name]["applicable"]
@@ -196,8 +196,8 @@ def build_workflow(checkpointer, generate, model_name, database_path=DATABASE_PA
         save_proposals(state["run_id"], state["evaluations"], database_path)
         return {}
 
-    def review(state):
-        decisions = interrupt({"run_id": state["run_id"], "message": "Awaiting HR decisions"})
+    def review(state): 
+        decisions = interrupt({"run_id": state["run_id"], "message": "Awaiting HR decisions"}) # Human in the loop, waiting for approval from HR
         save_decisions(state["run_id"], decisions, database_path)
         return {}
 

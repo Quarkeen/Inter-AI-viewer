@@ -8,7 +8,7 @@ from pypdf.errors import PdfReadError
 from database import save_job
 
 
-def load_description():
+def load_description(): # To load the extracted JD text using pypdf
     st.session_state.pop("upload_error", None)
     uploaded_file = st.session_state["jd_file"]
     if uploaded_file is None:
@@ -39,7 +39,6 @@ def load_description():
 
 
 st.title("HR Workspace")
-st.page_link("pages/1_Saved_JDs.py", label="View and edit saved JDs", icon="📋")
 st.subheader("Create a job")
 
 st.file_uploader(
@@ -60,7 +59,7 @@ with st.form("create_job"):
 
 if submitted:
     try:
-        job_id = save_job(title, description)
+        job_id = save_job(title, description) # To save the JD into the SQlite database, imported from database.py
         st.success(f"Job #{job_id} saved: {title.strip()}")
     except ValueError as error:
         st.error(str(error))

@@ -62,20 +62,25 @@ def waiting_room():
     if access["state"] != "early":
         st.rerun()
     st.info("Your interview has not started yet.")
-    st.write(f"Your slot opens at **{format_slot(access['starts_at'])}**.")
+    st.write(f"Your slot opens at **{format_slot(access['opens_at'])}**.")
     st.caption("This page checks your slot automatically. Keep your invitation private.")
 
 
 try:
-    session = get_session(token)
     access = get_invitation_access(token)
-    if session and session["status"] in ("completed", "expired"):
-        st.title("Thank you for your time")
-        st.success(COMPLETION_MESSAGE)
+    if access["state"] == "rescheduled":
+        st.title("Your interview has been rescheduled")
+        st.info("This invitation link is no longer active. You will receive updated interview details and a new link by email.")
+        st.caption("Please use the latest invitation from the recruitment team. Contact them if you have not received the updated email.")
         st.stop()
     if access["state"] == "invalid":
         st.title("Interview invitation")
         st.error("This invitation is unavailable. Please contact the hiring team.")
+        st.stop()
+    session = get_session(token)
+    if session and session["status"] in ("completed", "expired"):
+        st.title("Thank you for your time")
+        st.success(COMPLETION_MESSAGE)
         st.stop()
     if access["state"] == "early":
         st.title("Your interview is scheduled")
@@ -83,7 +88,7 @@ try:
         st.stop()
     if access["state"] == "expired":
         st.title("Interview invitation")
-        st.warning("Your allotted interview slot has ended.")
+        st.warning("The window to start this interview has closed.")
         st.caption("Please contact the hiring team if you need help with your invitation.")
         st.stop()
 
@@ -95,7 +100,8 @@ try:
             st.write("**Six main questions · up to four follow-ups**")
             st.write("Listen to or read each question, then tap the microphone to start and stop your answer. Submit the recording when you are ready.")
             st.caption("Keep each answer under three minutes. Your transcribed answers will appear here automatically.")
-            st.write(f"Your slot ends at **{format_slot(access['ends_at'])}**.")
+            st.write(f"Start between **{format_slot(access['opens_at'])}** and **{format_slot(access['closes_at'])}**.")
+            st.caption(f"You have {access['duration_minutes']} minutes from when you click Start interview. Refreshing does not reset your timer.")
         if st.button("Start interview", type="primary", icon=":material/play_arrow:"):
             start_session(token)
             run_action()

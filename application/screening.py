@@ -219,5 +219,5 @@ def assess_resume(resume_text, job_title, jd_text, generate):
             "explanation": gap["explanation"],
         })
     result["gaps"] = gaps
-    score = validate_assessment(result, resume_text, jd_text)
+    score = validate_assessment(result, resume_text, jd_text) # checks scores and evidence and then calculates the weighted total.
     return {"score": score, "assessment": result}

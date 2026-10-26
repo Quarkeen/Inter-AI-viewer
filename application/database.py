@@ -149,6 +149,13 @@ def init_database(database_path=DATABASE_PATH):
             )
         """)
         connection.execute("""
+            CREATE TABLE IF NOT EXISTS rescheduled_invitations (
+                token_sha256 TEXT PRIMARY KEY,
+                interview_id INTEGER NOT NULL REFERENCES interviews(interview_id),
+                rescheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        connection.execute("""
             CREATE TABLE IF NOT EXISTS interview_sessions (
                 session_id TEXT PRIMARY KEY,
                 interview_id INTEGER NOT NULL REFERENCES interviews(interview_id),
@@ -235,7 +242,7 @@ def init_database(database_path=DATABASE_PATH):
         """)
 
 
-def save_job(title, description, database_path=DATABASE_PATH):
+def save_job(title, description, database_path=DATABASE_PATH): # used by 0_Create_Job.py to create a job
     title = title.strip()
     description = description.strip()
     if not title or not description:
@@ -258,29 +265,29 @@ def get_jobs(database_path=DATABASE_PATH):
         )]
 
 
-def update_job(job_id, title, description, database_path=DATABASE_PATH):
-    title = title.strip()
-    description = description.strip()
-    if not title or not description:
-        raise ValueError("Enter both a job title and a job description.")
+# def update_job(job_id, title, description, database_path=DATABASE_PATH): # Used to update JD, deprecated because of complexities
+#     title = title.strip()
+#     description = description.strip()
+#     if not title or not description:
+#         raise ValueError("Enter both a job title and a job description.")
 
-    with closing(sqlite3.connect(database_path)) as connection:
-        cursor = connection.execute(
-            """UPDATE jobs SET title = ?, description = ?
-               WHERE job_id = ? AND (title != ? OR description != ?)""",
-            (title, description, job_id, title, description),
-        )
-        changed = cursor.rowcount > 0
-        if not changed and connection.execute(
-            "SELECT 1 FROM jobs WHERE job_id = ?", (job_id,)
-        ).fetchone() is None:
-            raise ValueError("This job no longer exists. Refresh the page.")
-        connection.commit()
-        return changed
+#     with closing(sqlite3.connect(database_path)) as connection:
+#         cursor = connection.execute(
+#             """UPDATE jobs SET title = ?, description = ?
+#                WHERE job_id = ? AND (title != ? OR description != ?)""",
+#             (title, description, job_id, title, description),
+#         )
+#         changed = cursor.rowcount > 0
+#         if not changed and connection.execute(
+#             "SELECT 1 FROM jobs WHERE job_id = ?", (job_id,)
+#         ).fetchone() is None:
+#             raise ValueError("This job no longer exists. Refresh the page.")
+#         connection.commit()
+#         return changed
 
 
 def save_application(job_id, full_name, email, resume_filename, resume_pdf,
-                     resume_extracted_text, resume_text, database_path=DATABASE_PATH):
+                     resume_extracted_text, resume_text, database_path=DATABASE_PATH): # Used by 2_Apply.py to save applications of candidates
     full_name = full_name.strip()
     email = email.strip().lower()
     if not full_name:

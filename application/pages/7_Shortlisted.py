@@ -60,6 +60,6 @@ try:
             "Report": st.column_config.LinkColumn(display_text="Open report ↗", width="small"),
         },
     )
-    st.caption(f"Showing {(page-1)*8+1}–{min(page*8,len(filtered))} of {len(filtered)} · Times in IST")
+    st.caption(f"Showing {(page-1)*8+1}–{min(page*8,len(filtered))} of {len(filtered)}")
 except (ValueError, sqlite3.Error):
     st.error("The candidate list could not be loaded. Please refresh and try again.")

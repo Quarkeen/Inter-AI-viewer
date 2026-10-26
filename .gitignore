@@ -5,3 +5,5 @@ data/
 /application/data
 /application/.streamlit
 /application/__pycache__
+bugs.txt
+testing/

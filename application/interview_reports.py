@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from database import DATABASE_PATH
 from screening import document_hashes
-from scheduling import _timestamp, utc_now
+from scheduling import _timestamp, access_window, utc_now
 
 
 REPORT_VERSION = "interview-v2"
@@ -441,7 +441,7 @@ def shortlisted_candidates(database_path=DATABASE_PATH):
         connection.row_factory = sqlite3.Row
         rows = connection.execute("""
             SELECT a.application_id,a.job_id,c.full_name,c.email,a.job_title_at_application AS role,
-                   i.interview_id,i.starts_at,i.ends_at,i.status AS invitation_status,s.session_id,s.status AS session_status,
+                   i.interview_id,i.starts_at,i.ends_at,i.status AS invitation_status,s.session_id,s.status AS session_status,s.slot_end AS session_deadline,
                    EXISTS(SELECT 1 FROM interview_turns t WHERE t.session_id=s.session_id
                           AND length(trim(t.answer_text))>0) AS has_answers,
                    (SELECT report_id FROM interview_reports WHERE session_id=s.session_id
@@ -460,9 +460,9 @@ def shortlisted_candidates(database_path=DATABASE_PATH):
         item = dict(row)
         if item["session_status"] == "completed":
             item["interview_status"] = "Done"
-        elif item["session_status"] == "active" and datetime.fromisoformat(item["ends_at"]) > utc_now():
+        elif item["session_status"] == "active" and datetime.fromisoformat(item["session_deadline"]) > utc_now():
             item["interview_status"] = "Ongoing"
-        elif item["ends_at"] and datetime.fromisoformat(item["ends_at"]) <= utc_now():
+        elif item["session_status"] == "expired" or (item["session_deadline"] and datetime.fromisoformat(item["session_deadline"]) <= utc_now()) or (item["ends_at"] and access_window(item["starts_at"], item["ends_at"])[1] <= utc_now()):
             item["interview_status"] = "Missed"
         else:
             item["interview_status"] = "Scheduled" if item["starts_at"] else "Not scheduled"

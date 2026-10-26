@@ -8,22 +8,25 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from database import DATABASE_PATH
-from scheduling import BUFFER, claim_invitation, finish_invitation, validate_base_url
+from scheduling import access_window, reserved_window, claim_invitation, finish_invitation, validate_base_url
 
 
 LOCAL_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 
-def format_slot(timestamp):
-    return datetime.fromisoformat(timestamp).astimezone(LOCAL_TIMEZONE).strftime("%d %b %Y, %I:%M %p IST")
+def format_slot(timestamp, include_timezone=True):
+    pattern = "%d %b %Y, %I:%M %p" + (" IST" if include_timezone else "")
+    return datetime.fromisoformat(timestamp).astimezone(LOCAL_TIMEZONE).strftime(pattern)
 
 
 def calendar_url(invitation):
-    start = datetime.fromisoformat(invitation["starts_at"]) - BUFFER
-    end = datetime.fromisoformat(invitation["ends_at"]) + BUFFER
+    start, end = reserved_window(invitation["starts_at"], invitation["ends_at"])
+    opens, closes = access_window(invitation["starts_at"], invitation["ends_at"])
+    duration = int((datetime.fromisoformat(invitation["ends_at"]) - datetime.fromisoformat(invitation["starts_at"])).total_seconds() // 60)
     description = (
-        f"Interview access: {format_slot(invitation['starts_at'])} to {format_slot(invitation['ends_at'])}. "
-        "This calendar reservation includes 5 minutes before and after the interview.\n"
+        f"Start your interview between {format_slot(opens.isoformat())} and {format_slot(closes.isoformat())}. "
+        f"You have {duration} minutes from the moment you start. "
+        "This calendar reservation covers the earliest start through the latest possible finish.\n"
         f"Open your personal invitation: {invitation['interview_url']}"
     )
     return "https://calendar.google.com/calendar/r/eventedit?" + urlencode({
@@ -35,26 +38,55 @@ def calendar_url(invitation):
 
 def build_email(invitation, username):
     message = EmailMessage()
-    message["From"] = formataddr(("Capstone Interviews", username))
+    message["From"] = formataddr(("Recruitment Team", username))
     message["To"] = invitation["email"]
-    message["Subject"] = f"Interview invitation - {invitation['job_title']}"
+    rescheduled = bool(invitation.get("is_rescheduled"))
+    subject = "Interview rescheduled" if rescheduled else "Interview invitation"
+    message["Subject"] = f"{subject} - {invitation['job_title']}"
     message["Message-ID"] = make_msgid()
-    start, end = format_slot(invitation["starts_at"]), format_slot(invitation["ends_at"])
+    opens, closes = access_window(invitation["starts_at"], invitation["ends_at"])
+    start, end = format_slot(opens.isoformat()), format_slot(closes.isoformat())
+    duration = int((datetime.fromisoformat(invitation["ends_at"]) - datetime.fromisoformat(invitation["starts_at"])).total_seconds() // 60)
     calendar = calendar_url(invitation)
+    introduction = (
+        f"Your technical interview for the {invitation['job_title']} position has been rescheduled. Please find your updated interview details below."
+        if rescheduled else
+        f"We are pleased to invite you to an AI-led technical interview for the {invitation['job_title']} position."
+    )
+    update_note = (
+        "Your previous invitation link is no longer valid. Please use the new link in this email. "
+        "If you saved the previous slot to your calendar, please replace it with the updated details."
+        if rescheduled else ""
+    )
     message.set_content(
-        f"Hello {invitation['full_name']},\n\nYou are invited to interview for {invitation['job_title']}.\n"
-        f"Start: {start}\nEnd: {end}\n\nInterview link: {invitation['interview_url']}\n\n"
-        f"Add to Google Calendar (includes 5-minute buffers): {calendar}\n\n"
-        "The link allows interview access only during your assigned slot. Please do not share it.\n"
+        f"Dear {invitation['full_name']},\n\n"
+        f"{introduction}\n\n"
+        + (f"{update_note}\n\n" if update_note else "") +
+        f"You may start your interview from {start} until {end}.\n"
+        f"Interview duration: {duration} minutes from the moment you click Start interview.\n"
+        "Please start before the window closes. Once started, your full interview time remains available even after the start window closes.\n\n"
+        f"Start your interview: {invitation['interview_url']}\n\n"
+        f"Add to Google Calendar: {calendar}\n"
+        "The calendar reservation covers the earliest start through the latest possible finish.\n\n"
+        "This invitation link is personal to you. Please keep it private.\n\n"
+        "We look forward to learning more about your experience and skills.\n\nKind regards,\nRecruitment Team\n"
     )
     message.add_alternative(
-        f"<p>Hello {escape(invitation['full_name'])},</p>"
-        f"<p>You are invited to interview for <strong>{escape(invitation['job_title'])}</strong>.</p>"
-        f"<p><strong>Start:</strong> {start}<br><strong>End:</strong> {end}</p>"
-        f'<p><a href="{escape(invitation["interview_url"],quote=True)}">Open interview invitation</a></p>'
-        f'<p><a href="{escape(calendar,quote=True)}">Add to Google Calendar</a></p>'
-        "<p>The calendar reservation includes 5 minutes before and after the slot. "
-        "Interview access is limited to the start and end times above. Please do not share your link.</p>",
+        '<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#173649;line-height:1.6">'
+        f'<h2>{"Interview rescheduled" if rescheduled else "Technical interview invitation"}</h2>'
+        f"<p>Dear {escape(invitation['full_name'])},</p>"
+        f"<p>{escape(introduction)}</p>"
+        + (f"<p>{escape(update_note)}</p>" if update_note else "") +
+        '<div style="background:#eef4f5;padding:18px;border-radius:8px">'
+        f"<strong>You may start your interview:</strong><br>From {start}<br>Until {end}<br><br>"
+        f"<strong>Duration:</strong> {duration} minutes from when you click Start interview.</div>"
+        "<p>Please start before the window closes. Once started, you will have your full interview time, even if the start window closes during your interview.</p>"
+        f'<p><a style="display:inline-block;background:#237d78;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none" href="{escape(invitation["interview_url"], quote=True)}">Open your interview</a></p>'
+        f'<p><a href="{escape(calendar, quote=True)}">Add to Google Calendar</a><br>'
+        '<small>The calendar reservation covers the earliest start through the latest possible finish.</small></p>'
+        "<p>This invitation link is personal to you. Please keep it private.</p>"
+        "<p>We look forward to learning more about your experience and skills.</p>"
+        "<p>Kind regards,<br><strong>Recruitment Team</strong></p></div>",
         subtype="html",
     )
     return message
