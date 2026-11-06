@@ -1,9 +1,15 @@
 .venv/
 __pycache__/
-data/
-.streamlit/secrets.toml
-/application/data
-/application/.streamlit
-/application/__pycache__
-bugs.txt
-testing/
+*.py[cod]
+.pytest_cache/
+**/.env
+**/secrets.toml
+/backend/data/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/.backups/
+/.run/
+# Keep the preserved migration snapshot's private/runtime files out of Git too.
+docs/
+/.aws
