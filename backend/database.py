@@ -428,6 +428,13 @@ def init_database(database_path=DATABASE_PATH):
         for table in ('interviews', 'interview_sessions'):
             if 'template_json' not in {row[1] for row in connection.execute(f'PRAGMA table_info({table})')}:
                 connection.execute(f'ALTER TABLE {table} ADD COLUMN template_json TEXT')
+        connection.execute("""CREATE TABLE IF NOT EXISTS scheduling_batches (
+            batch_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES shortlist_runs(run_id),
+            request_sha256 TEXT NOT NULL,
+            result_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
 
 
 def save_job(title, description, database_path=DATABASE_PATH): # used by 0_Create_Job.py to create a job

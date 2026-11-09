@@ -14,5 +14,6 @@ fastapi
 uvicorn
 python-multipart
 python-dotenv==1.2.4
+httpx==0.28.1
 
 Pillow>=11.0,<13

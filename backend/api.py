@@ -17,6 +17,12 @@ from warning_evidence import gaze_monitoring_summary, list_warnings, warning_sna
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
+from public_origin import active_public_origin
+from automatic_scheduling import (
+    AutomaticScheduleRequest, AutomaticScheduleCommit,
+    preview_automatic_schedule, commit_automatic_schedule,
+)
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from pydantic import BaseModel, ConfigDict, Field
@@ -94,7 +100,7 @@ def _smtp_settings():
     return {
         "SMTP_USERNAME": _env("SMTP_USERNAME", ""),
         "SMTP_PASSWORD": _env("SMTP_PASSWORD", ""),
-        "APP_BASE_URL": _env("APP_BASE_URL", "http://localhost:5173"),
+        "APP_BASE_URL": active_public_origin(require_ready=True) or _env("APP_BASE_URL", "http://localhost:5173"),
     }
 
 
@@ -400,6 +406,16 @@ def approved_candidates(run_id: str = Query(...)):
     return _call(get_approved_candidates, run_id, generic="The schedule could not be loaded or saved. Please try again.")
 
 
+@app.post("/api/scheduling/automatic/preview")
+def automatic_schedule_preview(body: AutomaticScheduleRequest):
+    return _call(preview_automatic_schedule, body.model_dump(), generic="The automatic schedule could not be prepared.")
+
+
+@app.post("/api/scheduling/automatic/commit")
+def automatic_schedule_commit(body: AutomaticScheduleCommit):
+    return _call(commit_automatic_schedule, body.model_dump(), generic="The automatic schedule could not be saved.")
+
+
 @app.get("/api/interviews")
 def list_interviews(job_id: int | None = Query(default=None)):
     return _call(get_interviews, job_id, generic="The schedule could not be loaded or saved. Please try again.")
@@ -561,7 +577,7 @@ async def advance_interview(
 ):
     recording = await audio.read() if audio is not None else None
     try:
-        continue_interview(token, _interview_model(token), recording=recording, turn_id=turn_id)
+        await run_in_threadpool(continue_interview, token, _interview_model(token), recording=recording, turn_id=turn_id)
     except (ValueError, RuntimeError, FileNotFoundError, sqlite3.Error) as error:
         if isinstance(error, ValueError):
             raise HTTPException(status_code=400, detail=str(error)) from None

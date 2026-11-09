@@ -60,6 +60,14 @@ The backend launcher works independently of your shell's current directory and s
 
 Gaze warnings allow five seconds of reliable look-away before a reminder. They remain for human review and do not consume the fullscreen/face-absence termination allowance. See [gaze monitoring](docs/GAZE_MONITORING.md) for implementation limits.
 
+### Optional automatic interview scheduling
+
+Manual scheduling remains the default. In **Interview scheduling**, select a job with a completed HR-approved shortlist, then choose **Automatic scheduling by agent**. Set one or more available windows in IST, the interview duration, reservation gap, template version and proctoring settings. Preview the assignments, then save the batch. Invitations continue to use the existing **Send invitation** action.
+
+The LangGraph scheduling workflow plans in application order and excludes existing reservations across **all jobs**, preserving already scheduled interviews. Each full reservation must fit inside an HR window. Current joining rules reserve twice the interview duration plus 20 minutes, before any additional gap. If there is insufficient capacity, extend or add windows; the batch will not save partially.
+
+Saving recalculates the reviewed plan under a SQLite write lock. A changed shortlist or conflicting new booking invalidates the preview. Interviews and a persistent batch receipt are committed in one transaction, so concurrent requests cannot double-book and retrying the same batch cannot create duplicates. This workflow uses deterministic scheduling tools and requires no model request.
+
 ## Checks
 
 Run the backend tests from the project root:
@@ -78,3 +86,9 @@ npm --prefix frontend run build
 Tests use temporary databases and mocked model calls. Production builds regenerate the local gaze worker. Runtime databases, credentials, model caches and installed dependencies are excluded from Git; preserve `backend/data/` separately when backing up or deploying this installation.
 
 See [migration notes](docs/MIGRATION.md) for the data relocation and legacy backup. Sample JDs and resumes are indexed in [samples/README.md](samples/README.md).
+
+## Share an interview remotely
+
+With the local API running, use `.venv/bin/python backend/share.py start` to create a temporary candidate-only HTTPS site through Cloudflare Tunnel. HR stays at http://localhost:5173, and new invitations use the active public hostname automatically. Stop sharing with `.venv/bin/python backend/share.py stop`.
+
+See [remote demo instructions](REMOTE_DEMO.md) for setup, URL changes and the public route restrictions.

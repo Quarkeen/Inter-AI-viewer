@@ -13,3 +13,4 @@ __pycache__/
 # Keep the preserved migration snapshot's private/runtime files out of Git too.
 docs/
 /.aws
+REMOTE_DEMO.md

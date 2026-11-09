@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type ApprovedCandidate, type Interview, type InterviewTemplate, type Job } from "../lib/api";
 import { combineLocal, formatSlot } from "../lib/format";
 import { MODE_LABELS } from "../lib/interviewTemplates";
 import { Alert, Badge, Button, Card, Field, Input, Modal, PageTitle, Select, Spinner } from "../components/ui";
+import { AutomaticSchedulePanel } from "../components/AutomaticSchedulePanel";
 
 const LABELS: Record<string, string> = {
   scheduled: "Scheduled · invitation not sent",
@@ -198,21 +199,27 @@ export function Schedule() {
   const [terminateOnInterruption, setTerminateOnInterruption] = useState(false);
   const [warningLimit, setWarningLimit] = useState(3);
   const [saving, setSaving] = useState(false);
+  const [schedulingMode, setSchedulingMode] = useState<"manual" | "automatic">("manual");
+  const [automaticBusy, setAutomaticBusy] = useState(false);
+  const loadGeneration = useRef(0);
 
   useEffect(() => {
     api.templates().then(setTemplates).catch(() => setTemplateError("Custom templates could not be loaded. Standard interview remains available; refresh to retry."));
   }, []);
 
   async function load(selectedJob: number) {
+    const generation = ++loadGeneration.current;
     const [loadedInterviews, shortlist] = await Promise.all([
       api.interviews(selectedJob),
       api.latestShortlist(selectedJob),
     ]);
+    const loadedApproved = shortlist.run?.status === "completed" ? await api.approvedCandidates(shortlist.run.run_id) : [];
+    if (generation !== loadGeneration.current) return;
     setInterviews(loadedInterviews);
     if (shortlist.run && shortlist.run.status === "completed") {
       setRunId(shortlist.run.run_id);
       setRunCompleted(true);
-      setApproved(await api.approvedCandidates(shortlist.run.run_id));
+      setApproved(loadedApproved);
     } else {
       setRunId(null);
       setRunCompleted(false);
@@ -239,6 +246,8 @@ export function Schedule() {
 
   async function changeJob(next: number) {
     setJobId(next);
+    setRunId(null); setRunCompleted(false); setApproved([]); setInterviews([]); setSelected(null);
+    setSchedulingMode("manual");
     setError(null);
     try {
       await load(next);
@@ -290,7 +299,7 @@ export function Schedule() {
       )}
       <Card>
         <Field label="Select a job">
-          <Select value={jobId ?? ""} onChange={(event) => void changeJob(Number(event.target.value))}>
+          <Select disabled={automaticBusy || saving} value={jobId ?? ""} onChange={(event) => void changeJob(Number(event.target.value))}>
             {jobs.map((job) => (
               <option key={job.job_id} value={job.job_id}>
                 #{job.job_id} · {job.title}
@@ -300,8 +309,21 @@ export function Schedule() {
         </Field>
       </Card>
 
+      {runCompleted && pending.length > 0 && <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Scheduling method">
+        <Button variant={schedulingMode === "manual" ? "primary" : "secondary"} disabled={automaticBusy || saving} aria-pressed={schedulingMode === "manual"} onClick={() => setSchedulingMode("manual")}>Manual scheduling</Button>
+        <Button variant={schedulingMode === "automatic" ? "primary" : "secondary"} disabled={automaticBusy || saving} aria-pressed={schedulingMode === "automatic"} onClick={() => setSchedulingMode("automatic")}>Automatic scheduling by agent</Button>
+      </div>}
+
       {runCompleted ? (
         pending.length > 0 ? (
+          schedulingMode === "automatic" && runId ? <AutomaticSchedulePanel
+            key={runId} runId={runId} candidates={pending} templates={templates} templateError={templateError}
+            onBusyChange={setAutomaticBusy}
+            onSaved={async count => {
+              setNotice(`${count} interview slot(s) scheduled automatically. Review them below and send invitations when ready.`);
+              if (jobId != null) await load(jobId);
+            }}
+          /> :
           <Card className="mt-4">
             <h2 className="mb-3 text-lg font-semibold">Schedule a candidate</h2>
             <form onSubmit={saveSlot} className="space-y-4">

@@ -161,6 +161,39 @@ export interface Interview {
   template_json?: string | null;
 }
 
+export interface AutomaticScheduleRequest {
+  run_id: string;
+  application_ids: number[];
+  windows: { starts_at: string; ends_at: string }[];
+  duration_minutes: number;
+  gap_minutes: number;
+  template_id: string | null;
+  template_version: number | null;
+  terminate_on_interruption: boolean;
+  warning_limit: number;
+}
+
+export interface AutomaticSchedulePlan {
+  job_id: number;
+  run_id: string;
+  assignments: {
+    application_id: number;
+    full_name: string;
+    starts_at: string;
+    ends_at: string;
+    reserved_from: string;
+    reserved_until: string;
+    interview_id?: number;
+  }[];
+  unassigned: { application_id: number; full_name: string }[];
+  skipped_application_ids: number[];
+  reservation_minutes: number;
+  gap_minutes: number;
+  can_schedule: boolean;
+  preview_hash: string;
+  batch_id?: string;
+}
+
 export interface InvitationAccess {
   state: "available" | "early" | "expired" | "invalid" | "rescheduled";
   starts_at?: string;
@@ -311,6 +344,14 @@ export const api = {
 
   approvedCandidates: (runId: string) =>
     request<ApprovedCandidate[]>(`/api/scheduling/approved?run_id=${encodeURIComponent(runId)}`),
+  previewAutomaticSchedule: (schedule: AutomaticScheduleRequest) =>
+    request<AutomaticSchedulePlan>("/api/scheduling/automatic/preview", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(schedule),
+    }),
+  commitAutomaticSchedule: (body: { batch_id: string; preview_hash: string; schedule: AutomaticScheduleRequest }) =>
+    request<AutomaticSchedulePlan>("/api/scheduling/automatic/commit", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
   interviews: (jobId?: number | null) =>
     request<Interview[]>(`/api/interviews${jobId ? `?job_id=${jobId}` : ""}`),
   scheduleInterview: (
